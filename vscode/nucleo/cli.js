@@ -7,6 +7,9 @@
  *   node cli.js lista [carpeta-de-pruebas]    muestra los planes y su avance
  *   node cli.js pdf <carpeta-del-plan>        genera el PDF
  *   node cli.js clave <clave> [modelo]        guarda la clave de Gemini
+ *   node cli.js e2e <carpeta-del-plan> [E03…] ejecuta las pruebas end-to-end y marca los escenarios
+ *   node cli.js junit <carpeta-del-plan> <reporte.xml> "<comando>"
+ *                                             corre tus pruebas (Cypress, Selenium…) y lee su JUnit
  *
  * Los estados y las evidencias se marcan en VS Code o Kiro, o editando sol.json.
  */
@@ -52,8 +55,37 @@ async function main(args) {
       console.log("Clave guardada en " + S.guardarClave(resto[0], resto[1]));
       return 0;
     }
+    case "e2e":
+    case "junit": {
+      const E = require("./e2e.js");
+      const carpeta = resto[0] && path.resolve(resto[0]);
+      if (!carpeta || !fs.existsSync(S.rutaPlan(carpeta))) { console.log("Uso: node cli.js " + orden + " <carpeta-del-plan> …"); return 1; }
+      const plan = S.leerPlan(carpeta);
+      const eco = (t) => process.stdout.write(t);
+      let resultados = [];
+      let extra = {};
+      if (orden === "junit") {
+        const [, reporte, comando] = resto;
+        if (!reporte || !comando) { console.log('Uso: node cli.js junit <carpeta-del-plan> <reporte.xml> "<comando>"'); return 1; }
+        resultados = (await E.ejecutarJUnit(comando, path.resolve(reporte), { cwd: process.cwd(), alSalir: eco })).resultados;
+      } else {
+        const ids = resto.slice(1);
+        const web = await E.ejecutarWeb(carpeta, plan, ids, { raiz: process.cwd(), alSalir: eco });
+        const android = await E.ejecutarAndroid(carpeta, plan, ids, { alSalir: eco });
+        resultados = web.resultados.concat(android.resultados);
+        extra = android.extra;
+        const faltan = web.faltan.concat(android.faltan);
+        if (faltan.length) console.log("\nSin archivo de prueba todavía: " + faltan.join(", "));
+        if (!web.ejecutadas && !android.ejecutadas) { console.log("No hay escenarios automatizados en este plan."); return 1; }
+      }
+      const r = E.aplicarResultados(carpeta, plan, resultados, { extra });
+      S.guardarPlan(carpeta, plan);
+      console.log("\n" + r.aplicados.map((x) => x.id + " " + S.ESTADOS[x.estado === "omitida" ? "pendiente" : x.estado].etiqueta).join(" · "));
+      if (r.sinEscenario.length) console.log("Sin escenario (falta «E03» en el título o el archivo): " + r.sinEscenario.join(", "));
+      return r.aplicados.some((x) => x.estado === "fallo") ? 2 : 0;
+    }
     default:
-      console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(3, 12).map((l) => l.replace(/^ \* ?/, "")).join("\n"));
+      console.log(fs.readFileSync(__filename, "utf8").split("\n").slice(3, 14).map((l) => l.replace(/^ \* ?/, "")).join("\n"));
       return orden ? 1 : 0;
   }
 }

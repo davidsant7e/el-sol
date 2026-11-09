@@ -10,9 +10,16 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const S = require("./nucleo/sol.js");
+const E = require("./nucleo/e2e.js");
 
 const CLAVE_SECRETA = "elsol.claveGemini";
 const paneles = new Map(); // carpeta del plan → Panel
+let salidaE2E = null; // canal de salida de las pruebas end-to-end
+
+/** En Windows la terminal suele ser PowerShell, que puede bloquear npx.ps1: se usan npx.cmd y npm.cmd. */
+function paraTerminal(linea) {
+  return process.platform === "win32" ? linea.replace(/^(npx|npm)(?=\s)/, "$1.cmd") : linea;
+}
 
 let contexto;
 
@@ -24,6 +31,12 @@ function activate(context) {
     vscode.commands.registerCommand("elsol.abrir", (uri) => abrir(uri)),
     vscode.commands.registerCommand("elsol.generarPdf", (uri) => generarPdfComando(uri)),
     vscode.commands.registerCommand("elsol.configurarClave", () => configurarClave()),
+    vscode.commands.registerCommand("elsol.e2eEjecutar", async (uri) => {
+      const carpeta = uri && uri.fsPath ? carpetaDePlan(uri.fsPath) : await elegirPlan("Ejecutar las pruebas end-to-end de…");
+      if (!carpeta) return;
+      const panel = Panel.abrir(carpeta);
+      return panel.e2eEjecutar([]);
+    }),
   );
 }
 
@@ -275,12 +288,15 @@ class Panel {
       tipos: S.TIPOS,
       prioridades: S.PRIORIDADES,
       veredictos: S.VEREDICTOS,
+      plataformas: E.PLATAFORMAS,
+      origenes: E.ORIGENES,
     };
     if (!this.plan) {
       this.web.webview.postMessage(Object.assign(base, { modo: "nuevo", borrador: this.borrador || {}, destino: path.join(path.basename(this.raizProyecto || ""), ajustes().carpeta) }, extra));
       return;
     }
     const plan = JSON.parse(JSON.stringify(this.plan));
+    for (const e of plan.escenarios) if (e.automatizacion) e.automatizacion.existe = fs.existsSync(E.rutaArchivo(this.carpeta, e.automatizacion));
     for (const e of plan.escenarios) for (const a of e.adjuntos) {
       a.uri = this.uriAdjunto(a.archivo);
       a.imagen = /^image\//.test(a.tipo) && a.tipo !== "image/svg+xml";
@@ -440,6 +456,35 @@ class Panel {
       case "mostrarCarpeta":
         return vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(S.rutaPlan(this.carpeta)));
 
+      // ------------------------------------------------ pruebas end-to-end
+      case "e2eConfig": {
+        if (!["url", "appId"].includes(m.campo)) return;
+        this.plan.e2e = Object.assign({}, this.plan.e2e, { [m.campo]: String(m.valor || "").trim() });
+        this.guardar();
+        return;
+      }
+      case "e2eGenerar":
+        return this.e2eGenerar(m.id, m.plataforma);
+      case "e2eGrabar":
+        return this.e2eGrabar(m.id, m.plataforma);
+      case "e2eVincular":
+        return this.e2eVincular(m.id);
+      case "e2eAbrir": {
+        const e = this.escenario(m.id);
+        if (e.automatizacion) vscode.window.showTextDocument(vscode.Uri.file(E.rutaArchivo(this.carpeta, e.automatizacion)), { viewColumn: vscode.ViewColumn.Beside });
+        return;
+      }
+      case "e2eQuitar": {
+        const e = this.escenario(m.id);
+        e.automatizacion = null;
+        this.guardar();
+        return this.enviarEstado({ aviso: m.id + " ya no está unido a una prueba automática (el archivo no se borró)." });
+      }
+      case "e2eEjecutar":
+        return this.e2eEjecutar(m.ids || []);
+      case "e2ePreparar":
+        return this.e2ePreparar(m.plataforma);
+
       case "abrirJson":
         return vscode.window.showTextDocument(vscode.Uri.file(S.rutaPlan(this.carpeta)), { viewColumn: vscode.ViewColumn.Beside });
     }
@@ -499,6 +544,194 @@ class Panel {
       this.ocupado = false;
       await this.enviarEstado();
     }
+  }
+
+  // ------------------------------------------------------------ pruebas end-to-end
+
+  raiz() {
+    return this.raizProyecto || (vscode.workspace.getWorkspaceFolder(vscode.Uri.file(this.carpeta)) || {}).uri?.fsPath || path.dirname(path.dirname(this.carpeta));
+  }
+
+  salida() {
+    if (!salidaE2E) salidaE2E = vscode.window.createOutputChannel("El Sol · pruebas end-to-end");
+    return salidaE2E;
+  }
+
+  /** Corre capturar-pagina.js con el Node que trae VS Code (Electron en modo Node). */
+  capturar(arg) {
+    return E.correr(
+      { cmd: process.execPath, args: [path.join(contexto.extensionPath, "nucleo", "capturar-pagina.js"), this.raiz(), arg] },
+      { cwd: this.raiz(), env: { ELECTRON_RUN_AS_NODE: "1" } },
+    );
+  }
+
+  /** ¿El proyecto tiene @playwright/test? (si no, ofrece instalarlo) */
+  async hayPlaywright() {
+    const r = await this.capturar("--version");
+    let v = {};
+    try { v = JSON.parse(r.salida); } catch (e) { /* */ }
+    if (v.version) return true;
+    const b = await vscode.window.showWarningMessage("El Sol: este proyecto no tiene Playwright. ¿Lo instalo? (npm i -D @playwright/test y el navegador Chromium)", "Instalar", "Cancelar");
+    if (b === "Instalar") this.e2ePreparar("web");
+    return false;
+  }
+
+  /** Pide y guarda la URL (web) o el paquete de la app (Android) si el plan aún no lo tiene. */
+  async datoPlataforma(plataforma) {
+    this.plan.e2e = E.normalizarConfig(this.plan.e2e);
+    const campo = plataforma === "android" ? "appId" : "url";
+    if (this.plan.e2e[campo]) return this.plan.e2e[campo];
+    const v = await vscode.window.showInputBox({
+      title: "XIX · El Sol — pruebas end-to-end",
+      prompt: plataforma === "android" ? "Paquete de la app Android (applicationId)" : "URL de la aplicación web que se va a probar",
+      placeHolder: plataforma === "android" ? "com.empresa.app" : "https://staging.miapp.com",
+      ignoreFocusOut: true,
+    });
+    if (!v || !v.trim()) return null;
+    this.plan.e2e[campo] = v.trim();
+    this.guardar();
+    return v.trim();
+  }
+
+  async e2eGenerar(id, plataforma) {
+    this.escenario(id); // que exista
+    const dato = await this.datoPlataforma(plataforma);
+    if (!dato) return;
+    // guardar() cambia this.plan por uno nuevo: el escenario se busca después de cada espera
+    const e = this.escenario(id);
+    const c = await clave();
+    if (!c.clave) { vscode.window.showWarningMessage("El Sol: para generar la prueba hace falta la clave de Gemini.", "Configurar clave").then((b) => b && configurarClave()); return; }
+    const archivo = E.archivoNuevo(e.id, plataforma);
+    const ruta = path.join(this.carpeta, archivo);
+    if (fs.existsSync(ruta)) {
+      const b = await vscode.window.showWarningMessage(archivo + " ya existe. ¿Lo reemplazo con una prueba nueva?", { modal: true }, "Reemplazar");
+      if (b !== "Reemplazar") return;
+    }
+    this.ocupado = true;
+    await this.enviarEstado();
+    try {
+      const codigo = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "El Sol: escribiendo la prueba de " + e.id + "…" }, async (prog) => {
+        const opciones = { clave: c.clave, modelo: ajustes().modelo };
+        if (plataforma === "android") {
+          prog.report({ message: "leyendo la pantalla del celular (maestro hierarchy)" });
+          const r = await E.correr({ cmd: "maestro", args: ["hierarchy"] }, { cwd: this.raiz() });
+          if (r.noEncontrado) this.avisoMaestro();
+          else if (r.codigo === 0) opciones.pantalla = E.resumirJerarquia(r.salida);
+        } else {
+          if (!(await this.hayPlaywright())) throw new Error("Primero instala Playwright y vuelve a intentarlo.");
+          prog.report({ message: "leyendo la página " + dato });
+          const r = await this.capturar(dato);
+          try { const j = JSON.parse(r.salida); if (j.snapshot) opciones.pagina = j; else if (j.error) this.salida().appendLine("No pude leer " + dato + ": " + j.error); } catch (err) { /* sin página: Gemini usa los pasos */ }
+          prog.report({ message: "pidiendo la prueba a Gemini" });
+        }
+        return E.generarCodigo(plataforma, e, this.plan, opciones);
+      });
+      E.prepararCarpeta(this.carpeta, this.plan);
+      fs.writeFileSync(ruta, codigo);
+      this.escenario(id).automatizacion = E.normalizarAutomatizacion({ plataforma, archivo, origen: "gemini" });
+      this.guardar();
+      vscode.window.showTextDocument(vscode.Uri.file(ruta), { viewColumn: vscode.ViewColumn.Beside, preview: false });
+      const variables = [...new Set((codigo.match(/process\.env\.([A-Z0-9_]+)|\$\{([A-Z0-9_]+)\}/g) || []).map((x) => x.replace(/process\.env\.|\$\{|\}/g, "")))];
+      await this.enviarEstado({ aviso: "Prueba de " + e.id + " lista en " + archivo + ". Revísala y toca ▶ Ejecutar." + (variables.length ? " Usa estos datos: " + variables.join(", ") + " (ponlos en e2e/.env)." : "") });
+    } catch (err) {
+      vscode.window.showErrorMessage("El Sol: " + err.message);
+    } finally {
+      this.ocupado = false;
+      await this.enviarEstado();
+    }
+  }
+
+  async e2eGrabar(id, plataforma) {
+    this.escenario(id);
+    const dato = await this.datoPlataforma(plataforma);
+    if (!dato) return;
+    const e = this.escenario(id);
+    const archivo = E.archivoNuevo(e.id, plataforma);
+    E.prepararCarpeta(this.carpeta, this.plan);
+    e.automatizacion = E.normalizarAutomatizacion({ plataforma, archivo, origen: "grabada" });
+    this.guardar();
+    const terminal = vscode.window.createTerminal({ name: "El Sol · grabar " + e.id, cwd: this.raiz() });
+    terminal.show();
+    if (plataforma === "android") {
+      terminal.sendText("maestro studio");
+      vscode.window.showInformationMessage("El Sol: en Maestro Studio arma el flujo de " + e.id + " sobre el celular o el emulador y guárdalo como " + path.join(path.basename(this.carpeta), archivo) + ". Después toca ▶ Ejecutar.", "Abrir la carpeta e2e")
+        .then((b) => b && vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(E.carpetaE2E(this.carpeta))));
+    } else {
+      if (!(await this.hayPlaywright())) return;
+      terminal.sendText(paraTerminal(E.lineaDeComando(E.comandoGrabarWeb(this.carpeta, e.automatizacion, dato))));
+      vscode.window.showInformationMessage("El Sol: se abre el navegador. Haz los pasos de " + e.id + " y, para verificar el resultado, usa los botones de aserción de la barra de Playwright. Al cerrar el navegador la prueba queda en " + archivo + ".");
+    }
+    return this.enviarEstado();
+  }
+
+  async e2eVincular(id) {
+    const e = this.escenario(id);
+    const uris = await vscode.window.showOpenDialog({
+      canSelectMany: false,
+      openLabel: "Unir a " + e.id,
+      title: "Prueba existente para " + e.id + " · " + e.titulo,
+      defaultUri: vscode.Uri.file(this.raiz()),
+      filters: { "Playwright o Maestro": ["ts", "js", "mjs", "yaml", "yml"] },
+    });
+    if (!uris || !uris.length) return;
+    const ruta = uris[0].fsPath;
+    const plataforma = /\.ya?ml$/i.test(ruta) ? "android" : "web";
+    this.escenario(id).automatizacion = E.normalizarAutomatizacion({ plataforma, archivo: path.relative(this.carpeta, ruta).split(path.sep).join("/"), origen: "existente" });
+    this.guardar();
+    return this.enviarEstado({ aviso: e.id + " quedó unido a " + vscode.workspace.asRelativePath(ruta) + "." });
+  }
+
+  /** Ejecuta las pruebas (de los ids pedidos o de todos los escenarios automatizados) y marca los escenarios. */
+  async e2eEjecutar(ids) {
+    const lista = this.plan.escenarios.filter((x) => x.automatizacion && (!ids.length || ids.includes(x.id)));
+    if (!lista.length) { vscode.window.showInformationMessage("El Sol: no hay escenarios con prueba automática. Usa Grabar, Generar o Vincular en un escenario."); return; }
+    this.ocupado = true;
+    await this.enviarEstado();
+    const out = this.salida();
+    out.show(true);
+    out.appendLine("\n=== " + new Date().toLocaleString() + " · " + this.plan.titulo + " · " + lista.map((x) => x.id).join(", ") + " ===");
+    const control = new AbortController();
+    try {
+      const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "El Sol: ejecutando " + lista.length + (lista.length === 1 ? " prueba" : " pruebas") + " end-to-end…", cancellable: true }, async (_p, cancelar) => {
+        cancelar.onCancellationRequested(() => control.abort());
+        const comun = { raiz: this.raiz(), alSalir: (t) => out.append(t), senal: control.signal };
+        const web = lista.some((x) => x.automatizacion.plataforma === "web") ? await E.ejecutarWeb(this.carpeta, this.plan, lista.map((x) => x.id), comun) : null;
+        const android = lista.some((x) => x.automatizacion.plataforma === "android") && !control.signal.aborted ? await E.ejecutarAndroid(this.carpeta, this.plan, lista.map((x) => x.id), comun) : null;
+        return { web, android };
+      });
+      const resultados = [].concat(r.web ? r.web.resultados : [], r.android ? r.android.resultados : []);
+      const aplicado = E.aplicarResultados(this.carpeta, this.plan, resultados, { extra: r.android ? r.android.extra : {} });
+      this.guardar();
+      const faltan = [].concat(r.web ? r.web.faltan : [], r.android ? r.android.faltan : []);
+      if (r.web && r.web.noEncontrado && !resultados.length) this.hayPlaywright();
+      if (r.android && r.android.noEncontrado) this.avisoMaestro();
+      const pasaron = aplicado.aplicados.filter((x) => x.estado === "paso").length;
+      const fallaron = aplicado.aplicados.filter((x) => x.estado === "fallo").length;
+      const partes = [];
+      if (aplicado.aplicados.length) partes.push(pasaron + " pasaron, " + fallaron + " fallaron");
+      if (faltan.length) partes.push("sin archivo todavía: " + faltan.join(", "));
+      if (!aplicado.aplicados.length && !faltan.length) partes.push(control.signal.aborted ? "cancelado" : "no hubo resultados; mira la salida «El Sol · pruebas end-to-end»");
+      await this.enviarEstado({ aviso: "Pruebas end-to-end: " + partes.join(" · ") + "." });
+    } finally {
+      this.ocupado = false;
+      await this.enviarEstado();
+    }
+  }
+
+  e2ePreparar(plataforma) {
+    if (plataforma === "android") return this.avisoMaestro(true);
+    const terminal = vscode.window.createTerminal({ name: "El Sol · instalar Playwright", cwd: this.raiz() });
+    terminal.show();
+    if (!fs.existsSync(path.join(this.raiz(), "package.json"))) terminal.sendText(paraTerminal("npm init -y"));
+    terminal.sendText(paraTerminal("npm install -D @playwright/test"));
+    terminal.sendText(paraTerminal("npx playwright install chromium"));
+  }
+
+  avisoMaestro(siempre) {
+    vscode.window.showWarningMessage(
+      (siempre ? "" : "El Sol: no encontré Maestro. ") + "Para Android se usa Maestro: necesita Java 17 y el celular con depuración USB (o un emulador). En Windows: descarga maestro.zip, descomprímelo en C:\\maestro y agrega C:\\maestro\\bin al PATH.",
+      "Ver instrucciones",
+    ).then((b) => b && vscode.env.openExternal(vscode.Uri.parse("https://docs.maestro.dev/maestro-cli/how-to-install-maestro-cli")));
   }
 
   html() {

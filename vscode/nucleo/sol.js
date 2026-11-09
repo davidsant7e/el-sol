@@ -116,6 +116,7 @@ function normalizarEscenario(e, id) {
     estado: ESTADOS[x.estado] ? x.estado : "pendiente",
     observacion: texto(x.observacion, 4000),
     adjuntos,
+    automatizacion: require("./e2e.js").normalizarAutomatizacion(x.automatizacion),
   };
 }
 
@@ -139,6 +140,7 @@ function normalizarPlan(p) {
     actualizado: x.actualizado || ahora(),
     fuente: x.fuente === "gemini" ? "gemini" : x.fuente === "mixta" ? "mixta" : "plantilla",
     responsable: texto(x.responsable, 120),
+    e2e: require("./e2e.js").normalizarConfig(x.e2e),
     escenarios,
   };
 }
@@ -602,7 +604,7 @@ function plantillaPorReglas(caso, opciones) {
 function sumarEscenarios(plan, escenarios) {
   const agregados = [];
   for (const e of escenarios) {
-    const { id, estado, observacion, adjuntos, ...resto } = e;
+    const { id, estado, observacion, adjuntos, automatizacion, ...resto } = e;
     agregados.push(nuevoEscenario(plan, resto));
   }
   return agregados;

@@ -1,6 +1,6 @@
 "use strict";
 // Corre todas las pruebas: node tests/correr.js
-const archivos = ["./nucleo.test.js", "./extension.test.js", "./panel.test.js"];
+const archivos = ["./nucleo.test.js", "./e2e.test.js", "./extension.test.js", "./panel.test.js"];
 (async () => {
   let ok = 0, mal = 0, omitidas = 0;
   for (const a of archivos) {

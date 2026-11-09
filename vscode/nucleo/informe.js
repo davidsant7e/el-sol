@@ -344,6 +344,15 @@ async function detalleEscenario(L, e, carpeta, contexto) {
   L.chip(S.ESTADOS[e.estado].etiqueta, COLOR_ESTADO[e.estado], MARGEN + ANCHO - 8, yt, 8);
   L.y -= altoCab;
   L.texto(S.TIPOS[e.tipo] + "  ·  Prioridad " + S.PRIORIDADES[e.prioridad].toLowerCase(), MARGEN + 12, L.y, { tam: 8.5, color: C.gris });
+  if (e.automatizacion) {
+    const E = require("./e2e.js");
+    const a = e.automatizacion;
+    const u = a.ultima;
+    L.y -= 12;
+    L.texto(recortarA("Prueba automática: " + E.PLATAFORMAS[a.plataforma] + " · " + E.ORIGENES[a.origen] + " · " + a.archivo +
+      (u ? " · última ejecución: " + (u.estado === "paso" ? "pasó" : u.estado === "fallo" ? "falló" : "omitida") + " en " + E.duracionLegible(u.duracionMs) : " · sin ejecutar"),
+      L.f.normal, 8.5, ANCHO - 12), MARGEN + 12, L.y, { tam: 8.5, color: C.gris });
+  }
   L.y -= 6;
 
   const etiqueta = (t) => {

@@ -183,7 +183,8 @@
 
   function contar(plan) {
     const r = { total: 0, pendiente: 0, paso: 0, fallo: 0, bloqueado: 0, "no-aplica": 0, adjuntos: 0 };
-    for (const e of plan.escenarios) { r.total++; r[e.estado]++; r.adjuntos += e.adjuntos.length; }
+    r.automatizados = 0;
+    for (const e of plan.escenarios) { r.total++; r[e.estado]++; r.adjuntos += e.adjuntos.length; if (e.automatizacion) r.automatizados++; }
     r.revisados = r.total - r.pendiente;
     r.veredicto = !r.total ? "vacio" : r.fallo ? "fallos" : r.pendiente || r.bloqueado ? "incompleto" : "aprobado";
     return r;
@@ -225,11 +226,13 @@
         est.hayPdf ? h("button", { onclick: () => enviar({ tipo: "abrirPdf" }) }, "Abrir el último PDF") : null,
         h("button", { onclick: () => enviar({ tipo: "agregarEscenario" }) }, "+ Escenario"),
         h("button", { disabled: est.ocupado, onclick: pedirMas, title: est.clave ? "Pide a Gemini escenarios que aún no estén" : "Sin clave: agrega los de la plantilla que falten" }, est.clave ? "Más escenarios con IA" : "Más escenarios"),
+        r.automatizados ? h("button", { disabled: est.ocupado, title: "Ejecuta las pruebas end-to-end de los escenarios automatizados y los marca", onclick: () => enviar({ tipo: "e2eEjecutar", ids: [] }) }, "▶ Ejecutar automatizadas (" + r.automatizados + ")") : null,
         h("button", { class: "secundario", onclick: () => enviar({ tipo: "mostrarCarpeta" }) }, "Carpeta"),
         h("button", { class: "secundario", onclick: () => enviar({ tipo: "abrirJson" }) }, "sol.json"),
       ),
       est.aviso ? h("p", { class: "nota aviso", role: "status" }, est.aviso) : null,
       bloqueCaso(p),
+      bloqueE2E(p),
       filtros,
     );
 
@@ -256,6 +259,75 @@
     );
     d.addEventListener("toggle", () => { d.open ? abiertos.add("caso") : abiertos.delete("caso"); guardarVista(); if (d.open) autoAlto(caso); });
     return d;
+  }
+
+  // ---------------------------------------------------------- pruebas end-to-end
+
+  function bloqueE2E(p) {
+    const cfg = p.e2e || {};
+    const campo = (k, etiqueta, ejemplo) => h("label", { class: "e2e-campo" }, etiqueta,
+      campoTexto({ placeholder: ejemplo, "data-foco": "e2e-" + k, "aria-label": etiqueta }, cfg[k], (v, ya) => {
+        cfg[k] = v;
+        p.e2e = cfg;
+        guardarTexto("e2e-" + k, ya, () => ({ tipo: "e2eConfig", campo: k, valor: v }));
+      }));
+    const d = h("details", { class: "bloque-e2e", open: abiertos.has("e2e") || null },
+      h("summary", {}, "Pruebas end-to-end ", h("span", { class: "tenue" }, "Playwright (web) · Maestro (Android)")),
+      h("div", { class: "e2e-config" },
+        campo("url", "URL de la app web", "https://staging.miapp.com"),
+        campo("appId", "Paquete de la app Android", "com.empresa.app"),
+      ),
+      h("p", { class: "nota" },
+        "En cada escenario: ", h("b", {}, "Grabar"), " (haces el flujo y queda como prueba), ", h("b", {}, "Generar con IA"),
+        " (Gemini la escribe con los pasos y la página o pantalla real) o ", h("b", {}, "Vincular"),
+        " una que ya exista. Al ejecutar, el escenario queda en Pasó o Falló, con el error en la observación y las capturas como evidencia. ",
+        "Datos de prueba (usuario, clave…) en e2e/.env, que no se sube a git."),
+      h("div", { class: "acciones" },
+        h("button", { class: "secundario", onclick: () => enviar({ tipo: "e2ePreparar", plataforma: "web" }) }, "Instalar Playwright"),
+        h("button", { class: "secundario", onclick: () => enviar({ tipo: "e2ePreparar", plataforma: "android" }) }, "Cómo instalar Maestro"),
+      ),
+    );
+    d.addEventListener("toggle", () => { d.open ? abiertos.add("e2e") : abiertos.delete("e2e"); guardarVista(); });
+    return d;
+  }
+
+  function fechaHora(iso) {
+    const d = new Date(iso);
+    if (isNaN(d)) return "";
+    const dos = (n) => String(n).padStart(2, "0");
+    return dos(d.getDate()) + "/" + dos(d.getMonth() + 1) + " " + dos(d.getHours()) + ":" + dos(d.getMinutes());
+  }
+
+  function segundos(ms) {
+    return ms < 1000 ? ms + " ms" : (ms / 1000).toFixed(1).replace(".", ",") + " s";
+  }
+
+  function zonaE2E(e) {
+    const a = e.automatizacion;
+    const b = (texto, mensaje, props) => h("button", Object.assign({ class: "secundario", disabled: est.ocupado, onclick: () => enviar(Object.assign({ id: e.id }, mensaje)) }, props || {}), texto);
+    if (!a) {
+      return h("div", { class: "e2e e2e-vacia" },
+        h("span", { class: "tenue" }, "Automatizar: "),
+        b("Grabar web", { tipo: "e2eGrabar", plataforma: "web" }, { title: "Abre el navegador; haz el flujo y queda como prueba de Playwright" }),
+        b("Generar web con IA", { tipo: "e2eGenerar", plataforma: "web" }, { title: "Gemini escribe la prueba de Playwright con los pasos y la página real" }),
+        b("Grabar Android", { tipo: "e2eGrabar", plataforma: "android" }, { title: "Abre Maestro Studio para armar el flujo en el celular" }),
+        b("Generar Android con IA", { tipo: "e2eGenerar", plataforma: "android" }, { title: "Gemini escribe el flujo de Maestro con los pasos y la pantalla actual" }),
+        b("Vincular…", { tipo: "e2eVincular" }, { title: "Unir una prueba que ya existe en el proyecto (.spec.ts o .yaml)" }),
+      );
+    }
+    const u = a.ultima;
+    return h("div", { class: "e2e" + (u ? " r-" + u.estado : "") },
+      h("span", { class: "e2e-chip" }, "⚙ " + (est.plataformas[a.plataforma] || a.plataforma)),
+      h("span", { class: "tenue", title: a.archivo }, (est.origenes[a.origen] || "") + " · " + a.archivo.split("/").pop()),
+      a.existe === false ? h("span", { class: "t-bloqueado" }, a.origen === "grabada" ? "aún no se ha guardado" : "no se encuentra el archivo") : null,
+      u ? h("span", { class: u.estado === "paso" ? "t-paso" : u.estado === "fallo" ? "t-fallo" : "tenue" },
+        "Última: " + (u.estado === "paso" ? "pasó" : u.estado === "fallo" ? "falló" : "omitida") + " · " + segundos(u.duracionMs) + " · " + fechaHora(u.fecha)) : null,
+      h("span", { class: "e2e-botones" },
+        h("button", { disabled: est.ocupado || a.existe === false, onclick: () => enviar({ tipo: "e2eEjecutar", ids: [e.id] }) }, "▶ Ejecutar"),
+        a.existe !== false ? b("Ver código", { tipo: "e2eAbrir" }) : null,
+        b("Desunir", { tipo: "e2eQuitar" }, { title: "Deja el escenario sin prueba automática (no borra el archivo)" }),
+      ),
+    );
   }
 
   function pedirMas() {
@@ -324,6 +396,7 @@
       detalles,
       h("label", { class: "etiqueta-obs" }, "Observación"),
       obs,
+      zonaE2E(e),
       zonaAdjuntos(e),
     );
 

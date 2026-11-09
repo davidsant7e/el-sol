@@ -7,7 +7,7 @@ const path = require("path");
 const Module = require("module");
 
 function vscodeFalso(raiz) {
-  const registro = { comandos: {}, mensajes: [], avisos: [], abiertos: [], paneles: [], secretos: {}, respuestaModal: "Quitar", vigias: [] };
+  const registro = { comandos: {}, mensajes: [], avisos: [], abiertos: [], paneles: [], secretos: {}, respuestaModal: "Quitar", vigias: [], salida: [], terminales: [] };
   const Uri = {
     file: (p) => ({ fsPath: p, scheme: "file", toString: () => "file://" + p }),
   };
@@ -41,7 +41,9 @@ function vscodeFalso(raiz) {
       showOpenDialog: async () => registro.archivosElegidos,
       showQuickPick: async (items) => items[0],
       showTextDocument: async (u) => { registro.abiertos.push(["texto", u.fsPath]); },
-      withProgress: async (_o, f) => f(),
+      withProgress: async (_o, f) => f({ report() {} }, { onCancellationRequested() {} }),
+      createOutputChannel: () => ({ appendLine: (t) => registro.salida.push(t), append: (t) => registro.salida.push(t), show() {} }),
+      createTerminal: (o) => { const t = { opciones: o, textos: [], show() {}, sendText: (x) => t.textos.push(x) }; registro.terminales.push(t); return t; },
       createWebviewPanel: (tipo, titulo) => {
         let alRecibir = null;
         const panel = {
@@ -220,6 +222,74 @@ module.exports = {
     } finally {
       antes === undefined ? delete process.env.APPDATA : (process.env.APPDATA = antes);
       if (geminiAntes !== undefined) process.env.GEMINI_API_KEY = geminiAntes;
+    }
+  },
+
+  async "pruebas end-to-end desde el panel"() {
+    // Ejecuta Playwright de verdad si está instalado en /tmp/pwt (o ELSOL_PLAYWRIGHT); si no, se omite.
+    const base = process.env.ELSOL_PLAYWRIGHT || "/tmp/pwt";
+    try { require.resolve("@playwright/test", { paths: [base] }); } catch (e) { return "omitida"; }
+    if (process.platform === "win32") return "omitida";
+    const http = require("http");
+    const servidor = http.createServer((_q, res) => { res.setHeader("Content-Type", "text/html; charset=utf-8"); res.end("<!doctype html><title>Demo</title><h1>Hola mundo</h1>"); }).listen(0);
+    const raiz = fs.mkdtempSync(path.join(base, "elsol-ext-"));
+    const antes = process.env.APPDATA;
+    process.env.APPDATA = path.join(raiz, "appdata");
+    try {
+      const { vscode, registro } = vscodeFalso(raiz);
+      const ext = cargarExtension(vscode);
+      ext.activate({ subscriptions: [], extensionPath: path.join(__dirname, "..", "vscode"), secrets: { get: async () => undefined, store: async () => {}, delete: async () => {} } });
+      assert.ok(registro.comandos["elsol.e2eEjecutar"]);
+      registro.comandos["elsol.nuevo"]();
+      await esperar();
+      const panel = registro.paneles[0];
+      await panel.enviar({ tipo: "crear", modo: "plantilla", titulo: "Portada", caso: "La portada saluda\n- Muestra Hola mundo" });
+      let est = ultimoEstado(registro);
+      const carpeta = path.join(raiz, est.carpeta);
+      await panel.enviar({ tipo: "e2eConfig", campo: "url", valor: "http://127.0.0.1:" + servidor.address().port + " " });
+      await panel.enviar({ tipo: "e2eEjecutar", ids: [] });
+      assert.ok(registro.avisos.some(([, m]) => /no hay escenarios con prueba automática/.test(m)));
+
+      // una prueba que ya existe en el proyecto (fuera de la carpeta del plan)
+      fs.mkdirSync(path.join(raiz, "tests"), { recursive: true });
+      const existente = path.join(raiz, "tests", "portada.spec.ts");
+      fs.writeFileSync(existente, "import { test, expect } from '@playwright/test';\ntest('la portada saluda', async ({ page }) => {\n  await page.goto(process.env.E2E_URL);\n  await expect(page.getByRole('heading')).toHaveText('Hola mundo');\n});\n");
+      fs.mkdirSync(path.join(carpeta, "e2e"), { recursive: true });
+      fs.writeFileSync(path.join(carpeta, "e2e", ".env"), "E2E_URL=http://127.0.0.1:" + servidor.address().port + "\n");
+      registro.archivosElegidos = [vscode.Uri.file(existente)];
+      await panel.enviar({ tipo: "e2eVincular", id: "E01" });
+      // y una del plan, grabada (codegen la deja como 'test')
+      fs.writeFileSync(path.join(carpeta, "e2e", "E02.spec.ts"), "import { test, expect } from '@playwright/test';\ntest('test', async ({ page }) => {\n  await page.goto('/');\n  await expect(page.getByRole('heading')).toHaveText('Adiós', { timeout: 1000 });\n});\n");
+      registro.entrada = "com.demo.app"; // pide el paquete de la app la primera vez
+      await panel.enviar({ tipo: "e2eGrabar", id: "E02", plataforma: "android" }); // abre Maestro Studio en una terminal
+      assert.deepStrictEqual(registro.terminales.map((t) => t.textos), [["maestro studio"]]);
+      let plan = JSON.parse(fs.readFileSync(path.join(carpeta, "sol.json"), "utf8"));
+      assert.strictEqual(plan.e2e.url, "http://127.0.0.1:" + servidor.address().port);
+      assert.strictEqual(plan.escenarios[0].automatizacion.archivo, "../../tests/portada.spec.ts");
+      assert.strictEqual(plan.escenarios[1].automatizacion.archivo, "e2e/E02.yaml");
+      // en realidad era web: lo vinculo
+      registro.archivosElegidos = [vscode.Uri.file(path.join(carpeta, "e2e", "E02.spec.ts"))];
+      await panel.enviar({ tipo: "e2eVincular", id: "E02" });
+      est = ultimoEstado(registro);
+      assert.strictEqual(est.plan.escenarios[1].automatizacion.existe, true);
+
+      await panel.enviar({ tipo: "e2eEjecutar", ids: [] });
+      plan = JSON.parse(fs.readFileSync(path.join(carpeta, "sol.json"), "utf8"));
+      const salida = registro.salida.join("");
+      assert.strictEqual(plan.escenarios[0].estado, "paso", salida.slice(-1500));
+      assert.strictEqual(plan.escenarios[1].estado, "fallo", salida.slice(-1500));
+      assert.ok(plan.escenarios[0].adjuntos.length === 0 || plan.escenarios[0].adjuntos.every((a) => a.archivo.includes("e2e-")));
+      assert.ok(plan.escenarios[1].adjuntos.some((a) => a.tipo === "image/png"));
+      assert.ok(/Pruebas end-to-end: 1 pasaron, 1 fallaron/.test(ultimoEstado(registro).aviso || [...registro.mensajes].reverse().find((m) => m.aviso).aviso));
+
+      await panel.enviar({ tipo: "e2eQuitar", id: "E01" });
+      plan = JSON.parse(fs.readFileSync(path.join(carpeta, "sol.json"), "utf8"));
+      assert.strictEqual(plan.escenarios[0].automatizacion, null);
+      assert.ok(fs.existsSync(existente), "desunir no borra el archivo");
+    } finally {
+      servidor.close();
+      process.env.APPDATA = antes;
+      fs.rmSync(raiz, { recursive: true, force: true });
     }
   },
 };

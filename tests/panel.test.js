@@ -138,4 +138,51 @@ module.exports = {
       await navegador.close();
     }
   },
+
+  async "panel: pruebas end-to-end"() {
+    if (!playwright) return "omitida";
+    const E = require("../vscode/nucleo/e2e.js");
+    const navegador = await playwright.chromium.launch();
+    try {
+      const { pg, errores, enviados, mandar } = await abrirPanel(navegador);
+      const est = estadoPlan();
+      est.plataformas = E.PLATAFORMAS;
+      est.origenes = E.ORIGENES;
+      est.plan.e2e = { url: "https://demo.test", appId: "" };
+      est.plan.escenarios[0].automatizacion = Object.assign(E.normalizarAutomatizacion({ plataforma: "web", archivo: "e2e/E01.spec.ts", origen: "gemini",
+        ultima: { fecha: "2026-11-09T15:30:00Z", estado: "fallo", duracionMs: 2400 } }), { existe: true });
+      est.plan.escenarios[1].automatizacion = Object.assign(E.normalizarAutomatizacion({ plataforma: "android", archivo: "e2e/E02.yaml", origen: "grabada" }), { existe: false });
+      await mandar(est);
+      await pg.waitForSelector('article[data-id="E01"] .e2e');
+      const t1 = await pg.textContent('article[data-id="E01"] .e2e');
+      assert.ok(t1.includes("Web (Playwright)") && t1.includes("Generada con Gemini") && t1.includes("falló · 2,4 s"), t1);
+      assert.ok((await pg.textContent('article[data-id="E02"] .e2e')).includes("aún no se ha guardado"));
+      assert.ok(await pg.isDisabled('article[data-id="E02"] .e2e button:has-text("Ejecutar")'));
+      assert.ok((await pg.textContent(".barra-acciones")).includes("Ejecutar automatizadas (2)"));
+
+      await pg.click('article[data-id="E01"] .e2e button:has-text("Ejecutar")');
+      await pg.click('article[data-id="E03"] button:has-text("Generar web con IA")');
+      await pg.click('article[data-id="E03"] button:has-text("Grabar Android")');
+      await pg.click('article[data-id="E03"] button:has-text("Vincular")');
+      await pg.click('article[data-id="E01"] button:has-text("Desunir")');
+      await pg.click(".barra-acciones button:has-text(\"Ejecutar automatizadas\")");
+      await pg.click(".bloque-e2e summary");
+      await pg.fill('[data-foco="e2e-appId"]', "com.demo.app");
+      await pg.waitForTimeout(650);
+      const m = (await enviados()).slice(1);
+      assert.deepStrictEqual(m, [
+        { tipo: "e2eEjecutar", ids: ["E01"] },
+        { tipo: "e2eGenerar", id: "E03", plataforma: "web" },
+        { tipo: "e2eGrabar", id: "E03", plataforma: "android" },
+        { tipo: "e2eVincular", id: "E03" },
+        { tipo: "e2eQuitar", id: "E01" },
+        { tipo: "e2eEjecutar", ids: [] },
+        { tipo: "e2eConfig", campo: "appId", valor: "com.demo.app" },
+      ]);
+      await pg.screenshot({ path: require("path").join(require("os").tmpdir(), "elsol-panel-e2e.png"), fullPage: true });
+      assert.deepStrictEqual(errores, []);
+    } finally {
+      await navegador.close();
+    }
+  },
 };
