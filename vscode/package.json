@@ -1,0 +1,54 @@
+{
+  "name": "el-sol",
+  "displayName": "XIX · El Sol — escenarios de prueba con evidencias",
+  "description": "Le pasas un caso de desarrollo y arma los escenarios de prueba con Gemini (o una plantilla). Marca cada uno como pasó o falló, adjunta capturas y archivos, y genera el informe en PDF.",
+  "version": "0.1.0",
+  "publisher": "davidsant7e",
+  "license": "MIT",
+  "icon": "media/icono.png",
+  "repository": { "type": "git", "url": "https://github.com/davidsant7e/el-sol" },
+  "engines": { "vscode": "^1.80.0" },
+  "categories": ["Testing", "Other"],
+  "keywords": ["pruebas", "QA", "casos de prueba", "escenarios", "evidencias", "PDF", "gemini", "checklist"],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onCommand:elsol.nuevo",
+    "onCommand:elsol.nuevoDesdeSeleccion",
+    "onCommand:elsol.abrir",
+    "onCommand:elsol.generarPdf",
+    "onCommand:elsol.configurarClave"
+  ],
+  "contributes": {
+    "commands": [
+      { "command": "elsol.nuevo", "title": "Nuevo plan de pruebas", "category": "El Sol", "icon": "$(beaker)" },
+      { "command": "elsol.nuevoDesdeSeleccion", "title": "Crear plan de pruebas con la selección", "category": "El Sol" },
+      { "command": "elsol.abrir", "title": "Abrir plan de pruebas", "category": "El Sol" },
+      { "command": "elsol.generarPdf", "title": "Generar el PDF del plan", "category": "El Sol" },
+      { "command": "elsol.configurarClave", "title": "Configurar clave de Gemini", "category": "El Sol" }
+    ],
+    "menus": {
+      "commandPalette": [
+        { "command": "elsol.nuevoDesdeSeleccion", "when": "editorHasSelection" }
+      ],
+      "editor/context": [
+        { "command": "elsol.nuevoDesdeSeleccion", "when": "editorHasSelection", "group": "z_elsol@1" }
+      ],
+      "explorer/context": [
+        { "command": "elsol.abrir", "when": "resourceFilename == sol.json", "group": "z_elsol@1" },
+        { "command": "elsol.generarPdf", "when": "resourceFilename == sol.json", "group": "z_elsol@2" }
+      ]
+    },
+    "keybindings": [
+      { "command": "elsol.nuevo", "key": "ctrl+alt+shift+t", "mac": "cmd+alt+shift+t" }
+    ],
+    "configuration": {
+      "title": "El Sol",
+      "properties": {
+        "elsol.carpeta": { "type": "string", "default": "pruebas", "description": "Carpeta del proyecto donde se guardan los planes de prueba (uno por subcarpeta)." },
+        "elsol.modelo": { "type": "string", "default": "gemini-3.5-flash-lite", "description": "Modelo de Gemini para armar los escenarios." },
+        "elsol.cantidad": { "type": "string", "default": "entre 8 y 15 escenarios", "description": "Cuántos escenarios pedir a Gemini en un plan nuevo." },
+        "elsol.abrirPdfAlTerminar": { "type": "boolean", "default": true, "description": "Abrir el PDF en el lector del sistema al generarlo." }
+      }
+    }
+  }
+}

@@ -1,0 +1,6 @@
+* text=auto eol=crlf
+*.sh text eol=lf
+*.vsix binary
+*.png binary
+*.pdf binary
+*.min.js -text

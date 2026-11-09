@@ -1,0 +1,192 @@
+/* XIX · El Sol — duotono (azul noche y durazno) sobre los colores del tema de VS Code. */
+:root {
+  --noche: #1f2a5c;
+  --durazno: #f4a582;
+  --paso: #3f9b62;
+  --fallo: #d24b3f;
+  --bloqueado: #c9821a;
+  --na: #8b93a1;
+  --pendiente: var(--vscode-descriptionForeground);
+  --borde: var(--vscode-panel-border, rgba(128, 128, 128, 0.35));
+  --tarjeta: var(--vscode-editorWidget-background, rgba(128, 128, 128, 0.06));
+  --radio: 8px;
+  --acento: var(--durazno);
+}
+/* en temas claros el durazno no se lee: se usa un tono más oscuro */
+body.vscode-light { --acento: #a8532e; --paso: #2f7d4f; --fallo: #b3261e; --bloqueado: #a85d00; --na: #6b7280; }
+
+
+body {
+  margin: 0;
+  padding: 0 20px 40px;
+  background: var(--vscode-editor-background);
+  color: var(--vscode-foreground);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size, 13px);
+  line-height: 1.45;
+}
+
+main { max-width: 980px; margin: 0 auto; }
+.cargando { opacity: 0.6; padding: 24px 0; }
+
+button, input, select, textarea { font: inherit; color: inherit; }
+
+button {
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.18));
+  color: var(--vscode-button-secondaryForeground, inherit);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 5px 12px;
+  min-height: 28px;
+  cursor: pointer;
+}
+button:hover:not(:disabled) { background: var(--vscode-button-secondaryHoverBackground, rgba(128, 128, 128, 0.28)); }
+button:disabled { opacity: 0.55; cursor: default; }
+button:focus-visible, input:focus, select:focus, textarea:focus, summary:focus-visible {
+  outline: 1px solid var(--vscode-focusBorder);
+  outline-offset: 1px;
+}
+button.primario { background: var(--vscode-button-background); color: var(--vscode-button-foreground); }
+button.primario:hover:not(:disabled) { background: var(--vscode-button-hoverBackground); }
+button.secundario { background: transparent; border-color: var(--borde); }
+button.enlace { background: none; border: 0; padding: 0; min-height: 0; color: var(--vscode-textLink-foreground); text-decoration: underline; }
+button.icono { background: transparent; padding: 2px 7px; min-width: 28px; color: var(--vscode-descriptionForeground); }
+button.icono:hover { color: var(--vscode-foreground); }
+button.icono.peligro:hover { color: var(--fallo); }
+
+input[type="text"], textarea, select {
+  background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, var(--borde));
+  border-radius: 4px;
+  padding: 5px 8px;
+  box-sizing: border-box;
+}
+input[type="text"], textarea { width: 100%; }
+textarea { resize: vertical; min-height: 34px; line-height: 1.45; }
+select { padding: 3px 6px; min-height: 28px; }
+label { display: block; margin: 12px 0 4px; font-weight: 600; font-size: 0.92em; }
+code { font-family: var(--vscode-editor-font-family); font-size: 0.95em; }
+
+.tenue { color: var(--vscode-descriptionForeground); font-weight: normal; }
+.nota { color: var(--vscode-descriptionForeground); font-size: 0.92em; margin: 8px 0; }
+.nota.aviso { color: var(--vscode-editorWarning-foreground, var(--bloqueado)); }
+.nota.pie { margin-top: 24px; }
+
+/* encabezado con la carta */
+.marca {
+  display: flex; align-items: center; gap: 10px;
+  margin: 18px 0 10px;
+}
+.marca .sol { color: var(--acento); flex: none; }
+.marca .arcano { letter-spacing: 0.32em; font-weight: 700; font-size: 0.78em; color: var(--acento); }
+.marca .sub { color: var(--vscode-descriptionForeground); }
+
+.acciones { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0 6px; }
+
+/* ---------- crear */
+.nuevo textarea#caso { min-height: 220px; }
+
+/* ---------- plan */
+.titulo-plan {
+  font-size: 1.55em !important; font-weight: 700;
+  border-color: transparent !important; background: transparent !important;
+  padding: 2px 0 !important;
+}
+.titulo-plan:hover { border-bottom: 1px dashed var(--borde) !important; }
+
+.resumen { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; margin: 6px 0 8px; }
+.veredicto { font-weight: 700; padding: 2px 10px; border-radius: 999px; color: #fff; font-size: 0.9em; letter-spacing: 0.02em; }
+.v-aprobado { background: var(--paso); }
+.v-fallos { background: var(--fallo); }
+.v-incompleto { background: var(--bloqueado); }
+.v-vacio { background: var(--na); }
+.t-paso { color: var(--paso); font-weight: 600; }
+.t-fallo { color: var(--fallo); font-weight: 600; }
+.t-bloqueado { color: var(--bloqueado); font-weight: 600; }
+
+.barra { display: flex; gap: 2px; height: 8px; border-radius: 999px; overflow: hidden; background: rgba(128, 128, 128, 0.15); }
+.tramo.e-paso { background: var(--paso); }
+.tramo.e-fallo { background: var(--fallo); }
+.tramo.e-bloqueado { background: var(--bloqueado); }
+.tramo.e-no-aplica { background: var(--na); }
+.tramo.e-pendiente { background: rgba(128, 128, 128, 0.35); }
+
+.bloque-caso { margin: 12px 0; border: 1px solid var(--borde); border-radius: var(--radio); padding: 8px 12px; }
+.bloque-caso summary { cursor: pointer; font-weight: 600; }
+.bloque-caso textarea { margin-top: 8px; }
+
+.filtros { display: flex; flex-wrap: wrap; gap: 6px; margin: 16px 0 10px; }
+.chip { border-radius: 999px; padding: 3px 12px; background: transparent; border: 1px solid var(--borde); }
+.chip b { font-weight: 700; margin-left: 2px; }
+.chip.activo { background: var(--vscode-button-background); color: var(--vscode-button-foreground); border-color: transparent; }
+
+.vacio { padding: 24px; text-align: center; color: var(--vscode-descriptionForeground); border: 1px dashed var(--borde); border-radius: var(--radio); }
+
+/* ---------- tarjeta de escenario */
+.escenarios { display: flex; flex-direction: column; gap: 12px; }
+.tarjeta {
+  background: var(--tarjeta);
+  border: 1px solid var(--borde);
+  border-left: 4px solid var(--borde);
+  border-radius: var(--radio);
+  padding: 10px 14px 12px;
+}
+.tarjeta.activa { border-color: var(--vscode-focusBorder); border-left-width: 4px; }
+.tarjeta.e-paso { border-left-color: var(--paso); }
+.tarjeta.e-fallo { border-left-color: var(--fallo); }
+.tarjeta.e-bloqueado { border-left-color: var(--bloqueado); }
+.tarjeta.e-no-aplica { border-left-color: var(--na); opacity: 0.85; }
+
+.fila1 { display: flex; align-items: center; gap: 10px; }
+.id { font-family: var(--vscode-editor-font-family); font-weight: 700; color: var(--acento); flex: none; }
+.titulo-esc { font-weight: 600; border-color: transparent !important; background: transparent !important; padding: 3px 4px !important; }
+.titulo-esc:hover { border-color: var(--borde) !important; }
+
+.fila2 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin: 6px 0 4px; }
+.estados { display: flex; flex-wrap: wrap; gap: 4px; }
+.estado { padding: 3px 10px; min-height: 26px; font-size: 0.92em; background: transparent; border: 1px solid var(--borde); }
+.estado.sel { color: #fff; font-weight: 700; border-color: transparent; }
+.estado.b-paso.sel { background: var(--paso); }
+.estado.b-fallo.sel { background: var(--fallo); }
+.estado.b-bloqueado.sel { background: var(--bloqueado); }
+.estado.b-no-aplica.sel { background: var(--na); }
+.estado.b-pendiente.sel { background: rgba(128, 128, 128, 0.45); }
+.meta { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+
+.esperado-corto { margin: 6px 0; font-size: 0.95em; color: var(--vscode-descriptionForeground); }
+.esperado-corto b { color: var(--vscode-foreground); font-weight: 600; }
+
+.detalles { margin: 6px 0; }
+.detalles summary { cursor: pointer; color: var(--vscode-textLink-foreground); font-size: 0.95em; }
+.detalles label:first-of-type { margin-top: 8px; }
+
+.observacion { margin-top: 8px; }
+
+/* evidencias */
+.zona { margin-top: 10px; border: 1px dashed transparent; border-radius: var(--radio); padding: 2px; }
+.zona.encima { border-color: var(--durazno); background: rgba(244, 165, 130, 0.08); }
+.adjuntos { display: flex; flex-wrap: wrap; gap: 10px; }
+.adjuntos:empty { display: none; }
+.adjunto {
+  position: relative; margin: 0; width: 132px;
+  border: 1px solid var(--borde); border-radius: 6px; overflow: hidden;
+  background: var(--vscode-editor-background);
+}
+.adjunto .ver { display: block; width: 100%; height: 92px; padding: 0; border-radius: 0; background: rgba(128, 128, 128, 0.1); }
+.adjunto img { width: 100%; height: 92px; object-fit: cover; display: block; }
+.adjunto .ext { font-weight: 700; letter-spacing: 0.08em; color: var(--vscode-descriptionForeground); }
+.adjunto figcaption { display: flex; flex-direction: column; padding: 4px 6px; font-size: 0.82em; }
+.adjunto .nombre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.adjunto .quitar {
+  position: absolute; top: 4px; right: 4px; min-height: 22px; padding: 0 6px;
+  background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 0.8em; opacity: 0;
+}
+.adjunto:hover .quitar, .adjunto .quitar:focus-visible { opacity: 1; }
+.soltar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 8px; font-size: 0.9em; }
+
+@media (max-width: 560px) {
+  body { padding: 0 12px 32px; }
+  .fila2 { flex-direction: column; align-items: flex-start; }
+}
+.tarjeta:has(.detalles[open]) .esperado-corto { display: none; }
+.etiqueta-obs { margin: 10px 0 4px; }
