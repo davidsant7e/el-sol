@@ -51,6 +51,7 @@ function ajustes() {
     modelo: c.get("modelo") || S.MODELO_POR_DEFECTO,
     cantidad: c.get("cantidad") || "entre 8 y 15 escenarios",
     abrirPdf: c.get("abrirPdfAlTerminar") !== false,
+    dispositivo: E.dispositivoAndroid(c.get("dispositivoAndroid")),
   };
 }
 
@@ -614,7 +615,7 @@ class Panel {
         const opciones = { clave: c.clave, modelo: ajustes().modelo };
         if (plataforma === "android") {
           prog.report({ message: "leyendo la pantalla del celular (maestro hierarchy)" });
-          const r = await E.correr({ cmd: "maestro", args: ["hierarchy"] }, { cwd: this.raiz() });
+          const r = await E.correr({ cmd: E.binMaestro(), args: E.conDispositivo(["hierarchy"], ajustes().dispositivo) }, { cwd: this.raiz(), env: E.entornoMaestro() });
           if (r.noEncontrado) this.avisoMaestro();
           else if (r.codigo === 0) opciones.pantalla = E.resumirJerarquia(r.salida);
         } else {
@@ -653,7 +654,7 @@ class Panel {
     const terminal = vscode.window.createTerminal({ name: "El Sol · grabar " + e.id, cwd: this.raiz() });
     terminal.show();
     if (plataforma === "android") {
-      terminal.sendText("maestro studio");
+      terminal.sendText(paraTerminal(E.lineaDeComando({ cmd: E.binMaestro(), args: E.conDispositivo(["studio"], ajustes().dispositivo) })));
       vscode.window.showInformationMessage("El Sol: en Maestro Studio arma el flujo de " + e.id + " sobre el celular o el emulador y guárdalo como " + path.join(path.basename(this.carpeta), archivo) + ". Después toca ▶ Ejecutar.", "Abrir la carpeta e2e")
         .then((b) => b && vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(E.carpetaE2E(this.carpeta))));
     } else {
@@ -694,7 +695,7 @@ class Panel {
     try {
       const r = await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "El Sol: ejecutando " + lista.length + (lista.length === 1 ? " prueba" : " pruebas") + " end-to-end…", cancellable: true }, async (_p, cancelar) => {
         cancelar.onCancellationRequested(() => control.abort());
-        const comun = { raiz: this.raiz(), alSalir: (t) => out.append(t), senal: control.signal };
+        const comun = { raiz: this.raiz(), alSalir: (t) => out.append(t), senal: control.signal, dispositivo: ajustes().dispositivo };
         const web = lista.some((x) => x.automatizacion.plataforma === "web") ? await E.ejecutarWeb(this.carpeta, this.plan, lista.map((x) => x.id), comun) : null;
         const android = lista.some((x) => x.automatizacion.plataforma === "android") && !control.signal.aborted ? await E.ejecutarAndroid(this.carpeta, this.plan, lista.map((x) => x.id), comun) : null;
         return { web, android };
@@ -719,7 +720,13 @@ class Panel {
   }
 
   e2ePreparar(plataforma) {
-    if (plataforma === "android") return this.avisoMaestro(true);
+    if (plataforma === "android") {
+      if (process.platform !== "win32") return this.avisoMaestro(true);
+      const script = path.join(contexto.extensionPath, "herramientas", "instalar-maestro.ps1");
+      const terminal = vscode.window.createTerminal({ name: "El Sol · instalar Maestro", shellPath: "powershell.exe", shellArgs: ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script] });
+      terminal.show();
+      return;
+    }
     const terminal = vscode.window.createTerminal({ name: "El Sol · instalar Playwright", cwd: this.raiz() });
     terminal.show();
     if (!fs.existsSync(path.join(this.raiz(), "package.json"))) terminal.sendText(paraTerminal("npm init -y"));
@@ -729,9 +736,12 @@ class Panel {
 
   avisoMaestro(siempre) {
     vscode.window.showWarningMessage(
-      (siempre ? "" : "El Sol: no encontré Maestro. ") + "Para Android se usa Maestro: necesita Java 17 y el celular con depuración USB (o un emulador). En Windows: descarga maestro.zip, descomprímelo en C:\\maestro y agrega C:\\maestro\\bin al PATH.",
-      "Ver instrucciones",
-    ).then((b) => b && vscode.env.openExternal(vscode.Uri.parse("https://docs.maestro.dev/maestro-cli/how-to-install-maestro-cli")));
+      (siempre ? "" : "El Sol: no encontré Maestro. ") + "Para Android se usa Maestro: necesita Java 17 y el celular con depuración USB (o un emulador).",
+      process.platform === "win32" ? "Instalar Maestro" : "Ver instrucciones",
+    ).then((b) => {
+      if (b === "Instalar Maestro") this.e2ePreparar("android");
+      else if (b) vscode.env.openExternal(vscode.Uri.parse("https://docs.maestro.dev/maestro-cli/how-to-install-maestro-cli"));
+    });
   }
 
   html() {

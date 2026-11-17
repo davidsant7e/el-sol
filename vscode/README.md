@@ -21,10 +21,10 @@ Mira un informe de ejemplo: [docs/ejemplo-informe.pdf](https://github.com/davids
 
 ## Instalar (Windows)
 
-1. Doble clic en **`Instalar.bat`**. Instala `dist/el-sol-0.2.0.vsix` en VS Code y en Kiro (los que encuentre).
+1. Doble clic en **`Instalar.bat`**. Instala `dist/el-sol-0.3.0.vsix` en VS Code y en Kiro (los que encuentre).
 2. Clave de Gemini: si ya la guardaste para **La Justicia**, El Sol usa la misma. Si no, el instalador la pide (opcional). También se cambia luego con **El Sol: Configurar clave de Gemini**.
 
-A mano: Extensiones → `···` → **Instalar desde VSIX…** → `dist/el-sol-0.2.0.vsix`.
+A mano: Extensiones → `···` → **Instalar desde VSIX…** → `dist/el-sol-0.3.0.vsix`.
 
 No necesita Node.js ni instalar paquetes: la extensión corre con el motor del propio editor y trae su generador de PDF.
 
@@ -46,7 +46,8 @@ Cada escenario puede tener su **prueba automática**. Al ejecutarla, El Sol marc
 
 - **URL** de la app web y, para Android, el **appId** (por ejemplo `com.miempresa.app`).
 - **Instalar Playwright**: abre una terminal y corre `npm i -D @playwright/test` y `npx playwright install chromium` en tu proyecto.
-- **Android** usa [Maestro](https://docs.maestro.dev/maestro-cli/how-to-install-maestro-cli): Java 17, descomprimir `maestro.zip` en `C:\maestro` y agregar `C:\maestro\bin` al PATH. Con el emulador o el celular conectado por `adb`.
+- **Android** usa [Maestro](https://docs.maestro.dev) (elegido sobre Appium: flujos en YAML, sin servidor ni drivers). Para instalarlo: botón **Instalar Maestro** del panel, o doble clic en **`Instalar-Maestro.bat`**. Usa el Java de Android Studio, deja Maestro en `%LOCALAPPDATA%\maestro` y lo agrega al PATH (sin administrador). Con el emulador o el celular conectado por `adb`.
+- **Más de un celular conectado** (por ejemplo, uno que da internet por USB): pon el número de serie del que se prueba en el ajuste `elsol.dispositivoAndroid` (lo ves con `adb devices`); si no, Maestro preguntaría cuál usar.
 
 **Automatizar un escenario** (botones en cada escenario):
 
@@ -97,6 +98,7 @@ pruebas/
 | `elsol.modelo` | `gemini-3.5-flash-lite` | Modelo de Gemini. `gemini-3.8-flash` escribe mejor pero tiene menos cupo gratis. |
 | `elsol.cantidad` | `entre 8 y 15 escenarios` | Cuántos escenarios pedir en un plan nuevo. |
 | `elsol.abrirPdfAlTerminar` | `true` | Abrir el PDF al generarlo. |
+| `elsol.dispositivoAndroid` | (vacío) | Número de serie del celular para Maestro. Vacío = `ANDROID_SERIAL` o el único conectado. |
 
 ## Privacidad
 

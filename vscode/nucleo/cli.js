@@ -71,7 +71,7 @@ async function main(args) {
       } else {
         const ids = resto.slice(1);
         const web = await E.ejecutarWeb(carpeta, plan, ids, { raiz: process.cwd(), alSalir: eco });
-        const android = await E.ejecutarAndroid(carpeta, plan, ids, { alSalir: eco });
+        const android = await E.ejecutarAndroid(carpeta, plan, ids, { alSalir: eco, dispositivo: process.env.ANDROID_SERIAL });
         resultados = web.resultados.concat(android.resultados);
         extra = android.extra;
         const faltan = web.faltan.concat(android.faltan);

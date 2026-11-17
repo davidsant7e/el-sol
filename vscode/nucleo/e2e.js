@@ -141,12 +141,55 @@ function comandoGrabarWeb(carpetaPlan, auto, url) {
   return { cmd: "npx", args };
 }
 
+/**
+ * Dónde está maestro: en el PATH, o en %LOCALAPPDATA%\maestro (donde lo deja instalar-maestro.ps1),
+ * para que funcione sin reiniciar el editor después de instalarlo.
+ */
+function binMaestro(entorno) {
+  const env = entorno || process.env;
+  if (process.platform === "win32" && env.LOCALAPPDATA) {
+    const bat = path.join(env.LOCALAPPDATA, "maestro", "bin", "maestro.bat");
+    if (fs.existsSync(bat)) return bat;
+  }
+  return "maestro";
+}
+
+/**
+ * Variables para correr maestro: JAVA_HOME con el Java de Android Studio si falta, y sin analítica.
+ */
+function entornoMaestro(entorno) {
+  const env = Object.assign({}, entorno || process.env, { MAESTRO_CLI_NO_ANALYTICS: "1" });
+  if (process.platform === "win32" && !env.JAVA_HOME) {
+    const jbr = [path.join(env.ProgramFiles || "C:\\Program Files", "Android", "Android Studio", "jbr"),
+      env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, "Programs", "Android Studio", "jbr") : null]
+      .find((d) => d && fs.existsSync(path.join(d, "bin", "java.exe")));
+    if (jbr) env.JAVA_HOME = jbr;
+  }
+  return env;
+}
+
+/**
+ * Argumentos de maestro para un celular concreto. Con más de un dispositivo conectado (p. ej. el que da
+ * internet por USB) maestro preguntaría cuál usar y la prueba se quedaría esperando.
+ */
+function conDispositivo(args, dispositivo) {
+  const d = String(dispositivo || "").trim();
+  return d ? ["--device", d].concat(args) : args.slice();
+}
+
+/** El dispositivo a usar: el ajuste de El Sol, o ANDROID_SERIAL. */
+function dispositivoAndroid(ajuste, entorno) {
+  return String(ajuste || (entorno || process.env).ANDROID_SERIAL || "").trim();
+}
+
 /** maestro test con reporte JUnit y carpeta de artefactos propia del escenario. */
-function comandoMaestro(carpetaPlan, auto, idEsc) {
+function comandoMaestro(carpetaPlan, auto, idEsc, opciones) {
+  const o = opciones || {};
   const salida = path.join(carpetaE2E(carpetaPlan), RESULTADOS, "maestro", idEsc);
+  const datos = Object.entries(o.env || {}).flatMap(([k, v]) => ["-e", k + "=" + v]);
   return {
-    cmd: "maestro",
-    args: ["test", rutaArchivo(carpetaPlan, auto), "--format", "junit", "--output", path.join(salida, "reporte.xml"), "--test-output-dir=" + salida],
+    cmd: o.bin || "maestro",
+    args: conDispositivo(["test"].concat(datos, [rutaArchivo(carpetaPlan, auto), "--format", "junit", "--output", path.join(salida, "reporte.xml"), "--test-output-dir=" + salida]), o.dispositivo),
     salida,
     reporte: path.join(salida, "reporte.xml"),
   };
@@ -457,12 +500,11 @@ async function ejecutarAndroid(carpetaPlan, plan, ids, opciones) {
   const env = leerEnv(carpetaPlan);
   for (const e of lista) {
     if (!fs.existsSync(rutaArchivo(carpetaPlan, e.automatizacion))) { faltan.push(e.id); continue; }
-    const c = comandoMaestro(carpetaPlan, e.automatizacion, e.id);
+    // Maestro recibe los datos de .env como -e CLAVE=valor
+    const c = comandoMaestro(carpetaPlan, e.automatizacion, e.id, { env, dispositivo: dispositivoAndroid(o.dispositivo), bin: binMaestro() });
     fs.rmSync(c.salida, { recursive: true, force: true });
     fs.mkdirSync(c.salida, { recursive: true });
-    // Maestro recibe los datos de .env como -e CLAVE=valor
-    c.args.splice(1, 0, ...Object.entries(env).flatMap(([k, v]) => ["-e", k + "=" + v]));
-    const r = await correr(c, { cwd: c.salida, alSalir: o.alSalir, spawn: o.spawn, senal: o.senal });
+    const r = await correr(c, { cwd: c.salida, env: entornoMaestro(), alSalir: o.alSalir, spawn: o.spawn, senal: o.senal });
     salida += r.salida;
     if (r.noEncontrado) { noEncontrado = true; break; }
     let res = fs.existsSync(c.reporte) ? leerJUnit(fs.readFileSync(c.reporte, "utf8")) : [];
@@ -605,7 +647,7 @@ function resumirJerarquia(json) {
 module.exports = {
   CARPETA, RESULTADOS, PLATAFORMAS, ORIGENES, MARCA, PREFIJO_EVIDENCIA,
   normalizarConfig, normalizarAutomatizacion, carpetaE2E, rutaArchivo, archivoNuevo, prepararCarpeta, configPlaywright, leerEnv,
-  comandoPlaywright, comandoGrabarWeb, comandoMaestro, lineaDeComando, correr, automatizados,
+  comandoPlaywright, comandoGrabarWeb, comandoMaestro, binMaestro, entornoMaestro, conDispositivo, dispositivoAndroid, lineaDeComando, correr, automatizados,
   ejecutarWeb, ejecutarAndroid, ejecutarJUnit,
   leerReportePlaywright, leerJUnit, artefactosEn, idDe, resumenError,
   aplicarResultados, observacionConResultado, ponerTitulo,

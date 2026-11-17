@@ -284,7 +284,7 @@
         "Datos de prueba (usuario, clave…) en e2e/.env, que no se sube a git."),
       h("div", { class: "acciones" },
         h("button", { class: "secundario", onclick: () => enviar({ tipo: "e2ePreparar", plataforma: "web" }) }, "Instalar Playwright"),
-        h("button", { class: "secundario", onclick: () => enviar({ tipo: "e2ePreparar", plataforma: "android" }) }, "Cómo instalar Maestro"),
+        h("button", { class: "secundario", onclick: () => enviar({ tipo: "e2ePreparar", plataforma: "android" }) }, "Instalar Maestro"),
       ),
     );
     d.addEventListener("toggle", () => { d.open ? abiertos.add("e2e") : abiertos.delete("e2e"); guardarVista(); });

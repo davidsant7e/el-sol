@@ -236,4 +236,15 @@ module.exports = {
       servidor.close();
     }
   },
+
+  "e2e: Maestro con un celular elegido (--device) y el ajuste o ANDROID_SERIAL"() {
+    const E = require("../vscode/nucleo/e2e.js");
+    assert.deepStrictEqual(E.conDispositivo(["hierarchy"], "ZY22KKQ9LD"), ["--device", "ZY22KKQ9LD", "hierarchy"]);
+    assert.deepStrictEqual(E.conDispositivo(["studio"], " "), ["studio"]);
+    assert.strictEqual(E.dispositivoAndroid("", { ANDROID_SERIAL: "ABC" }), "ABC");
+    assert.strictEqual(E.dispositivoAndroid("ZY22KKQ9LD", { ANDROID_SERIAL: "ABC" }), "ZY22KKQ9LD");
+    const c = E.comandoMaestro("/tmp/plan", { plataforma: "android", archivo: "e2e/E01.yaml" }, "E01", { env: { U: "ana" }, dispositivo: "ZY22KKQ9LD" });
+    assert.deepStrictEqual(c.args.slice(0, 5), ["--device", "ZY22KKQ9LD", "test", "-e", "U=ana"]);
+    assert.ok(E.entornoMaestro({}).MAESTRO_CLI_NO_ANALYTICS === "1");
+  },
 };
