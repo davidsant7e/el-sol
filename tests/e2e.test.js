@@ -245,6 +245,6 @@ module.exports = {
     assert.strictEqual(E.dispositivoAndroid("ZY22KKQ9LD", { ANDROID_SERIAL: "ABC" }), "ZY22KKQ9LD");
     const c = E.comandoMaestro("/tmp/plan", { plataforma: "android", archivo: "e2e/E01.yaml" }, "E01", { env: { U: "ana" }, dispositivo: "ZY22KKQ9LD" });
     assert.deepStrictEqual(c.args.slice(0, 5), ["--device", "ZY22KKQ9LD", "test", "-e", "U=ana"]);
-    assert.ok(E.entornoMaestro({}).MAESTRO_CLI_NO_ANALYTICS === "1");
+    assert.ok(E.entornoMaestro({}).MAESTRO_CLI_NO_ANALYTICS === "true");
   },
 };

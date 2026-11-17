@@ -158,7 +158,7 @@ function binMaestro(entorno) {
  * Variables para correr maestro: JAVA_HOME con el Java de Android Studio si falta, y sin analítica.
  */
 function entornoMaestro(entorno) {
-  const env = Object.assign({}, entorno || process.env, { MAESTRO_CLI_NO_ANALYTICS: "1" });
+  const env = Object.assign({}, entorno || process.env, { MAESTRO_CLI_NO_ANALYTICS: "true", MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED: "true" });
   if (process.platform === "win32" && !env.JAVA_HOME) {
     const jbr = [path.join(env.ProgramFiles || "C:\\Program Files", "Android", "Android Studio", "jbr"),
       env.LOCALAPPDATA ? path.join(env.LOCALAPPDATA, "Programs", "Android Studio", "jbr") : null]

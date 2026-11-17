@@ -10,8 +10,9 @@ $ProgressPreference = "SilentlyContinue"
 Write-Host "XIX · El Sol — instalar Maestro" -ForegroundColor Yellow
 
 function Version-Java($exe) {
+    # java -version escribe en stderr; con cmd /c se lee sin que PowerShell lo tome como error.
     try {
-        $t = (& $exe -version 2>&1 | Out-String)
+        $t = (cmd /c "`"$exe`" -version 2>&1" | Out-String)
         if ($t -match 'version "(\d+)') { return [int]$Matches[1] }
     } catch { }
     return 0
@@ -77,8 +78,10 @@ if ($adb) { Agregar-AlPath $adb; Write-Host "  adb: $adb" } else { Write-Host " 
 
 # Comprobar
 Write-Host "`nComprobando..."
-$env:MAESTRO_CLI_NO_ANALYTICS = "1"
-[Environment]::SetEnvironmentVariable("MAESTRO_CLI_NO_ANALYTICS", "1", "User")
+foreach ($v in @("MAESTRO_CLI_NO_ANALYTICS", "MAESTRO_CLI_ANALYSIS_NOTIFICATION_DISABLED")) {
+    Set-Item "env:$v" "true"
+    [Environment]::SetEnvironmentVariable($v, "true", "User")
+}
 & (Join-Path $destino "bin\maestro.bat") --version
 if ($adb) {
     Write-Host "`nCelulares conectados (adb devices):"
