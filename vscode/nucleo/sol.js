@@ -15,7 +15,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
-const { execFileSync } = require("child_process");
+const { execFileSync, spawn } = require("child_process");
 
 const VERSION_FORMATO = 1;
 const ARCHIVO_PLAN = "sol.json";
@@ -417,6 +417,52 @@ function extraerJson(t) {
   }
 }
 
+/** Texto de un error de red con su causa ("fetch failed (ECONNRESET …)"). */
+function mensajeRed(e) {
+  const c = e && e.cause;
+  const causa = c ? [c.code, c.message].filter(Boolean).join(" ") : "";
+  return String(e && e.message) + (causa ? " (" + causa + ")" : "");
+}
+
+/**
+ * fetch con respaldo: si la conexión dentro de VS Code falla (VS Code envuelve las conexiones de las
+ * extensiones por el proxy y los certificados, y a veces eso es lo que se cae), se repite la petición
+ * en un proceso Node aparte (peticion.js). o: { fetch, respaldo, espera }.
+ */
+async function fetchConRespaldo(url, init, o) {
+  const opc = o || {};
+  const hacerFetch = opc.fetch || globalThis.fetch;
+  try {
+    return await hacerFetch(url, init);
+  } catch (e) {
+    if (e && e.name === "AbortError") throw e;
+    if (opc.fetch && !opc.respaldo) throw e;
+    const r = await (opc.respaldo || peticionAparte)({ url, method: init.method, headers: init.headers, body: init.body, esperaMs: opc.espera || 60000 });
+    if (r.error) throw new Error("sin conexión con Gemini: " + r.error + (r.causa ? " (" + r.causa + ")" : "") + "; dentro de VS Code: " + mensajeRed(e));
+    return { ok: r.status >= 200 && r.status < 300, status: r.status, porRespaldo: true, text: async () => r.cuerpo, json: async () => JSON.parse(r.cuerpo) };
+  }
+}
+
+/** Corre peticion.js con el Node de VS Code (Electron en modo Node) o el node actual. */
+function peticionAparte(p) {
+  return new Promise((resolve) => {
+    let salida = "";
+    let hijo;
+    try {
+      hijo = spawn(process.execPath, [path.join(__dirname, "peticion.js")], {
+        env: Object.assign({}, process.env, process.versions.electron ? { ELECTRON_RUN_AS_NODE: "1" } : {}),
+        windowsHide: true,
+      });
+    } catch (e) { return resolve({ error: e.message }); }
+    hijo.stdout.on("data", (d) => { salida += d; });
+    hijo.on("error", (e) => resolve({ error: e.message }));
+    hijo.on("close", () => {
+      try { resolve(JSON.parse(salida)); } catch (e) { resolve({ error: "el proceso aparte no respondió" }); }
+    });
+    hijo.stdin.end(JSON.stringify(p));
+  });
+}
+
 /**
  * Pide los escenarios a Gemini. Si no hay clave, falla o responde mal, usa la plantilla por reglas.
  * opciones: { clave, modelo, fetch, existentes: [títulos], indicacion, cantidad }
@@ -427,12 +473,11 @@ async function generarEscenarios(caso, opciones) {
   const respaldo = () => plantillaPorReglas(caso, { existentes: o.existentes });
   if (!texto(caso)) return { escenarios: [], fuente: "plantilla", aviso: "Escribe el caso de desarrollo primero." };
   if (!o.clave) return { escenarios: respaldo(), fuente: "plantilla", aviso: "Sin clave de Gemini: escenarios armados con la plantilla." };
-  const hacerFetch = o.fetch || globalThis.fetch;
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(o.modelo || MODELO_POR_DEFECTO) + ":generateContent";
   const control = typeof AbortController === "function" ? new AbortController() : null;
   const reloj = control ? setTimeout(() => control.abort(), o.espera || 60000) : null;
   try {
-    const r = await hacerFetch(url, {
+    const r = await fetchConRespaldo(url, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-goog-api-key": o.clave },
       body: JSON.stringify({
@@ -440,7 +485,7 @@ async function generarEscenarios(caso, opciones) {
         generationConfig: { temperature: 0.4, maxOutputTokens: 8192, responseMimeType: "application/json", responseSchema: ESQUEMA_GEMINI },
       }),
       signal: control ? control.signal : undefined,
-    });
+    }, o);
     if (!r.ok) {
       const motivo = r.status === 429 ? "Gemini llegó al límite gratuito por ahora"
         : r.status === 400 || r.status === 403 ? "Gemini rechazó la clave o el modelo"
@@ -466,7 +511,7 @@ async function generarEscenarios(caso, opciones) {
     if (!escenarios.length) throw new Error("ningún escenario completo");
     return { escenarios, fuente: "gemini", aviso: null };
   } catch (e) {
-    const motivo = e && e.name === "AbortError" ? "Gemini tardó demasiado" : "No pude usar la respuesta de Gemini (" + (e && e.message) + ")";
+    const motivo = e && e.name === "AbortError" ? "Gemini tardó demasiado" : "No pude usar Gemini (" + mensajeRed(e) + ")";
     return { escenarios: respaldo(), fuente: "plantilla", aviso: motivo + ": escenarios armados con la plantilla." };
   } finally {
     if (reloj) clearTimeout(reloj);
@@ -618,5 +663,5 @@ module.exports = {
   agregarAdjunto, quitarAdjunto, rutaAdjunto, quitarEscenario, nuevoEscenario, sumarEscenarios,
   tipoMime, esImagenIncrustable,
   datosGit, rutasConfig, leerClaveGuardada, guardarClave,
-  instruccionesGemini, generarEscenarios, plantillaPorReglas, criterios, extraerJson,
+  instruccionesGemini, generarEscenarios, fetchConRespaldo, mensajeRed, plantillaPorReglas, criterios, extraerJson,
 };

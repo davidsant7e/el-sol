@@ -607,16 +607,20 @@ async function generarCodigo(plataforma, esc, plan, opciones) {
   if (!o.clave) throw new Error("Para generar la prueba hace falta la clave de Gemini (El Sol: Configurar clave de Gemini).");
   if (!esc.pasos.length) throw new Error(esc.id + " no tiene pasos: escríbelos primero.");
   const instrucciones = plataforma === "android" ? instruccionesAndroid(esc, plan, o.pantalla) : instruccionesWeb(esc, plan, o.pagina);
-  const hacerFetch = o.fetch || globalThis.fetch;
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(o.modelo || S.MODELO_POR_DEFECTO) + ":generateContent";
-  const r = await hacerFetch(url, {
+  let r;
+  try {
+    r = await S.fetchConRespaldo(url, {
     method: "POST",
     headers: { "Content-Type": "application/json", "x-goog-api-key": o.clave },
     body: JSON.stringify({
       contents: [{ role: "user", parts: [{ text: instrucciones }] }],
       generationConfig: { temperature: 0.2, maxOutputTokens: 8192 },
     }),
-  });
+    }, o);
+  } catch (e) {
+    throw new Error("No pude conectarme con Gemini: " + S.mensajeRed(e));
+  }
   if (!r.ok) {
     throw new Error(r.status === 429 ? "Gemini llegó al límite gratuito por ahora." : r.status === 400 || r.status === 403 ? "Gemini rechazó la clave o el modelo." : "Gemini respondió " + r.status + ".");
   }

@@ -292,4 +292,38 @@ module.exports = {
     assert.strictEqual(g.repositorio, "demo");
     assert.ok(!g.remoto.includes("token123"), "no debe filtrar credenciales del remoto");
   },
+
+  async "Gemini: si el fetch de VS Code falla, se repite en un proceso aparte"() {
+    const S = require("../vscode/nucleo/sol.js");
+    const roto = async () => { const e = new TypeError("fetch failed"); e.cause = { code: "ECONNRESET", message: "socket hang up" }; throw e; };
+    const lista = [{ titulo: "Abre la app", tipo: "camino-feliz", prioridad: "alta", pasos: ["Abrir"], esperado: "Se ve el mazo" }];
+    const cuerpo = JSON.stringify({ candidates: [{ content: { parts: [{ text: JSON.stringify(lista) }] } }] });
+    let pedido = null;
+    const r = await S.generarEscenarios("El Mazo abre las apps", { clave: "k", fetch: roto, respaldo: async (p) => { pedido = p; return { status: 200, cuerpo }; } });
+    assert.strictEqual(r.fuente, "gemini");
+    assert.strictEqual(pedido.method, "POST");
+    assert.ok(pedido.headers["x-goog-api-key"] === "k");
+    const r2 = await S.generarEscenarios("El Mazo abre las apps", { clave: "k", fetch: roto, respaldo: async () => ({ error: "fetch failed", causa: "ENOTFOUND" }) });
+    assert.strictEqual(r2.fuente, "plantilla");
+    assert.ok(/ENOTFOUND/.test(r2.aviso) && /ECONNRESET/.test(r2.aviso), r2.aviso);
+  },
+
+  async "Gemini: peticion.js hace la petición en un proceso aparte"() {
+    const http = require("http");
+    const S = require("../vscode/nucleo/sol.js");
+    const srv = http.createServer((req, res) => { let b = ""; req.on("data", (d) => (b += d)); req.on("end", () => { res.writeHead(201); res.end("eco:" + req.method + ":" + b); }); });
+    await new Promise((ok) => srv.listen(0, "127.0.0.1", ok));
+    const url = "http://127.0.0.1:" + srv.address().port + "/x";
+    try {
+      const r = await S.fetchConRespaldo(url, { method: "POST", headers: {}, body: "hola" }, { fetch: async () => { throw new TypeError("fetch failed"); }, respaldo: null });
+      assert.fail("sin respaldo explícito en pruebas debe relanzar");
+    } catch (e) { assert.ok(/fetch failed/.test(e.message)); }
+    const orig = globalThis.fetch;
+    globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
+    try {
+      const r = await S.fetchConRespaldo(url, { method: "POST", headers: {}, body: "hola" }, {});
+      assert.strictEqual(r.status, 201);
+      assert.strictEqual(await r.text(), "eco:POST:hola");
+    } finally { globalThis.fetch = orig; srv.close(); }
+  },
 };
