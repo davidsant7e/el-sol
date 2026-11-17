@@ -57,7 +57,7 @@ function ajustes() {
 
 /** Clave de Gemini: la de la extensión, o la variable GEMINI_API_KEY, o la que guardó La Justicia. */
 async function clave() {
-  const propia = await contexto.secrets.get(CLAVE_SECRETA);
+  const propia = S.limpiarClave(await contexto.secrets.get(CLAVE_SECRETA));
   if (propia) return { clave: propia, origen: "guardada en El Sol" };
   return S.leerClaveGuardada();
 }
@@ -75,7 +75,7 @@ async function configurarClave() {
     await contexto.secrets.delete(CLAVE_SECRETA);
     vscode.window.showInformationMessage("El Sol: clave borrada. " + (S.leerClaveGuardada().clave ? "Se seguirá usando la de " + S.leerClaveGuardada().origen + "." : "Los escenarios se armarán con la plantilla."));
   } else {
-    await contexto.secrets.store(CLAVE_SECRETA, valor.trim());
+    await contexto.secrets.store(CLAVE_SECRETA, S.limpiarClave(valor));
     vscode.window.showInformationMessage("El Sol: clave de Gemini guardada.");
   }
   for (const p of paneles.values()) p.enviarEstado();

@@ -21,10 +21,10 @@ Mira un informe de ejemplo: [docs/ejemplo-informe.pdf](https://github.com/davids
 
 ## Instalar (Windows)
 
-1. Doble clic en **`Instalar.bat`**. Instala `dist/el-sol-0.3.2.vsix` en VS Code y en Kiro (los que encuentre).
+1. Doble clic en **`Instalar.bat`**. Instala `dist/el-sol-0.3.3.vsix` en VS Code y en Kiro (los que encuentre).
 2. Clave de Gemini: si ya la guardaste para **La Justicia**, El Sol usa la misma. Si no, el instalador la pide (opcional). También se cambia luego con **El Sol: Configurar clave de Gemini**.
 
-A mano: Extensiones → `···` → **Instalar desde VSIX…** → `dist/el-sol-0.3.2.vsix`.
+A mano: Extensiones → `···` → **Instalar desde VSIX…** → `dist/el-sol-0.3.3.vsix`.
 
 No necesita Node.js ni instalar paquetes: la extensión corre con el motor del propio editor y trae su generador de PDF.
 

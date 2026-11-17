@@ -605,6 +605,7 @@ function validarCodigo(codigo, plataforma, esc) {
 async function generarCodigo(plataforma, esc, plan, opciones) {
   const o = opciones || {};
   if (!o.clave) throw new Error("Para generar la prueba hace falta la clave de Gemini (El Sol: Configurar clave de Gemini).");
+  if (!S.claveValida(o.clave)) throw new Error("La clave de Gemini tiene caracteres que no van (¿se pegó con algo de más?). Vuelve a ponerla con «El Sol: Configurar clave de Gemini».");
   if (!esc.pasos.length) throw new Error(esc.id + " no tiene pasos: escríbelos primero.");
   const instrucciones = plataforma === "android" ? instruccionesAndroid(esc, plan, o.pantalla) : instruccionesWeb(esc, plan, o.pagina);
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(o.modelo || S.MODELO_POR_DEFECTO) + ":generateContent";

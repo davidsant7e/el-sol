@@ -326,4 +326,12 @@ module.exports = {
       assert.strictEqual(await r.text(), "eco:POST:hola");
     } finally { globalThis.fetch = orig; srv.close(); }
   },
+
+  "Gemini: la clave se limpia de lo que se cuela al pegar"() {
+    const S = require("../vscode/nucleo/sol.js");
+    assert.strictEqual(S.limpiarClave("\ufeff \"AIzaSyA-b_c\"\r\n"), "AIzaSyA-b_c");
+    assert.strictEqual(S.limpiarClave("GEMINI_API_KEY=AIza\u200bXYZ"), "AIzaXYZ");
+    assert.ok(S.claveValida("AIzaSyA-b_c"));
+    assert.ok(!S.claveValida("AIza…"));
+  },
 };

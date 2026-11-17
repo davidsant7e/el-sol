@@ -2,7 +2,7 @@
   "name": "el-sol",
   "displayName": "XIX · El Sol — escenarios de prueba con evidencias",
   "description": "Le pasas un caso de desarrollo y arma los escenarios de prueba con Gemini (o una plantilla). Marca cada uno como pasó o falló, adjunta capturas y archivos, automatiza los escenarios con pruebas end-to-end (Playwright para web, Maestro para Android) y genera el informe en PDF.",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "publisher": "davidsant7e",
   "license": "MIT",
   "icon": "media/icono.png",

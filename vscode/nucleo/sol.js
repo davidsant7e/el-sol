@@ -338,13 +338,28 @@ function rutasConfig() {
   return { sol: path.join(base, "ElSol", "config.json"), justicia: path.join(base, "Justicia", "config.json") };
 }
 
+/**
+ * Deja la clave como la espera Gemini: sin espacios, saltos de línea, comillas, BOM ni caracteres
+ * invisibles que se cuelan al copiar y pegar (Node rechaza el encabezado si los trae).
+ */
+function limpiarClave(clave) {
+  return String(clave || "")
+    .replace(/[\u0000-\u0020\u007f-\u00a0\u200b-\u200f\u2028\u2029\u2060\ufeff"'`]/g, "")
+    .replace(/^GEMINI_API_KEY=/i, "");
+}
+
+/** true si la clave solo tiene los caracteres que puede llevar un encabezado HTTP. */
+function claveValida(clave) {
+  return /^[\x21-\x7e]+$/.test(String(clave || ""));
+}
+
 function leerClaveGuardada() {
-  if (process.env.GEMINI_API_KEY) return { clave: process.env.GEMINI_API_KEY, origen: "variable GEMINI_API_KEY" };
+  if (process.env.GEMINI_API_KEY) return { clave: limpiarClave(process.env.GEMINI_API_KEY), origen: "variable GEMINI_API_KEY" };
   const r = rutasConfig();
   for (const [origen, archivo] of [["El Sol", r.sol], ["La Justicia", r.justicia]]) {
     try {
-      const c = JSON.parse(fs.readFileSync(archivo, "utf8"));
-      if (c && c.clave) return { clave: String(c.clave), origen: "configuración de " + origen, modelo: c.modelo };
+      const c = JSON.parse(fs.readFileSync(archivo, "utf8").replace(/^\ufeff/, ""));
+      if (c && c.clave) return { clave: limpiarClave(c.clave), origen: "configuración de " + origen, modelo: c.modelo };
     } catch (e) { /* no existe */ }
   }
   return { clave: "", origen: "" };
@@ -353,7 +368,7 @@ function leerClaveGuardada() {
 function guardarClave(clave, modelo) {
   const archivo = rutasConfig().sol;
   fs.mkdirSync(path.dirname(archivo), { recursive: true });
-  const datos = { clave: String(clave || "").trim() };
+  const datos = { clave: limpiarClave(clave) };
   if (modelo) datos.modelo = modelo;
   escribirAtomico(archivo, JSON.stringify(datos, null, 2));
   return archivo;
@@ -473,6 +488,7 @@ async function generarEscenarios(caso, opciones) {
   const respaldo = () => plantillaPorReglas(caso, { existentes: o.existentes });
   if (!texto(caso)) return { escenarios: [], fuente: "plantilla", aviso: "Escribe el caso de desarrollo primero." };
   if (!o.clave) return { escenarios: respaldo(), fuente: "plantilla", aviso: "Sin clave de Gemini: escenarios armados con la plantilla." };
+  if (!claveValida(o.clave)) return { escenarios: respaldo(), fuente: "plantilla", aviso: "La clave de Gemini tiene caracteres que no van (¿se pegó con algo de más?). Vuelve a ponerla con «El Sol: Configurar clave de Gemini». Escenarios armados con la plantilla." };
   const url = "https://generativelanguage.googleapis.com/v1beta/models/" + encodeURIComponent(o.modelo || MODELO_POR_DEFECTO) + ":generateContent";
   const control = typeof AbortController === "function" ? new AbortController() : null;
   const reloj = control ? setTimeout(() => control.abort(), o.espera || 60000) : null;
@@ -663,5 +679,5 @@ module.exports = {
   agregarAdjunto, quitarAdjunto, rutaAdjunto, quitarEscenario, nuevoEscenario, sumarEscenarios,
   tipoMime, esImagenIncrustable,
   datosGit, rutasConfig, leerClaveGuardada, guardarClave,
-  instruccionesGemini, generarEscenarios, fetchConRespaldo, mensajeRed, plantillaPorReglas, criterios, extraerJson,
+  instruccionesGemini, generarEscenarios, fetchConRespaldo, mensajeRed, limpiarClave, claveValida, plantillaPorReglas, criterios, extraerJson,
 };
